@@ -1,0 +1,50 @@
+[package]
+edition      = "2024"
+name         = "esp_32_c6_project"
+version      = "0.1.0"
+
+[[bin]]
+name = "esp_32_c6_project"
+path = "./src/bin/main.rs"
+
+[dependencies]
+
+common_logic = {path = "../common_logic"}
+xdevs-no-std = {git = "https://github.com/iscar-ucm/xdevs_no_std.rs.git", branch = "component2" }
+
+esp-hal = { version = "1.0.0", features = ["esp32c6", "unstable"] }
+
+esp-println = { version = "0.16.1", features = ["esp32c6"] }
+
+esp-rtos = { version = "0.2.0", features = ["embassy", "esp32c6"] }
+
+esp-bootloader-esp-idf = { version = "0.4.0", features = ["esp32c6"] }
+
+embassy-executor = { version = "0.9.1", features = [] }
+embassy-time = "0.5.0"
+embassy-sync = "0.7.2"
+rtt-target = "0.6.2"
+
+critical-section = "1.2.0"
+static_cell = "2.1.1"
+
+heapless = "0.9.2"
+# Sensor
+bme280-rs = {version = "0.3.0", features = ["async"] }
+uom = { version = "0.37.0", default-features = false, features = ["f32", "si"] }
+embedded-io-async = "0.7.0"
+
+
+[profile.dev]
+# Rust debug is too slow.
+# For debug builds always builds with some optimization
+opt-level = "s"
+
+[profile.release]
+codegen-units    = 1     # LLVM can perform better optimizations using a single thread
+debug            = 2
+debug-assertions = false
+incremental      = false
+lto              = 'fat'
+opt-level        = 's'
+overflow-checks  = false

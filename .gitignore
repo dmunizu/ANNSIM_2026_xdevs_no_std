@@ -1,0 +1,5 @@
+# Ignore Rust build artifacts for all projects
+**/target/
+**/*.rs.bk
+**/*.csv
+**/*.lock
