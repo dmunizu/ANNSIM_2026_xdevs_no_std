@@ -146,17 +146,15 @@ pub mod measure {
                     }
                 }
                 Mode::WaitingAck => {
-                    if let Some(&ack) = input.ack.get_values().last() {
-                        if let Some(&toggle) = input.toggle.get_values().last() {
-                            if !toggle {
-                                state.phase = Mode::Off;
-                                state.sigma = f64::INFINITY;
-                            }
-                        } else {
-                            state.report = (ack, elapsed);
-                            state.phase = Mode::AckReceived;
-                            state.sigma = state.period - elapsed;
+                    if let Some(&toggle) = input.toggle.get_values().last() {
+                        if !toggle {
+                            state.phase = Mode::Off;
+                            state.sigma = f64::INFINITY;
                         }
+                    } else if let Some(&ack) = input.ack.get_values().last() {
+                        state.report = (ack, elapsed);
+                        state.phase = Mode::AckReceived;
+                        state.sigma = state.period - elapsed;
                     }
                 }
                 Mode::AckReceived => {
