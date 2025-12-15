@@ -15,12 +15,12 @@ mod sim_models;
 #[xdevs::coupled(
     couplings = {
         command -> processor_model.command,
-        processor_model.get_temp -> sensor_model.get_temp,
-        processor_model.get_hum -> sensor_model.get_hum,
-        processor_model.led_cmd -> sensor_model.led_cmd,
-        sensor_model.temp_out -> processor_model.temp_ack,
-        sensor_model.hum_out -> processor_model.hum_ack,
-        sensor_model.led_out -> processor_model.led_ack,
+        processor_model.get_temp -> temp_sensor_model.get_temp,
+        processor_model.get_hum -> hum_sensor_model.get_hum,
+        processor_model.led_cmd -> led_sensor_model.led_cmd,
+        temp_sensor_model.temp_out -> processor_model.temp_ack,
+        hum_sensor_model.hum_out -> processor_model.hum_ack,
+        led_sensor_model.led_out -> processor_model.led_ack,
         processor_model.temp_report -> report_model.temp_report,
         processor_model.hum_report -> report_model.hum_report,
         processor_model.led_report -> report_model.led_report,
@@ -30,7 +30,9 @@ struct PCSimulation {
     #[input]
     command: Port<Command, 1>,
     #[components]
-    sensor_model: sim_models::SensorModel,
+    temp_sensor_model: sim_models::TemperatureSensorModel,
+    hum_sensor_model: sim_models::HumiditySensorModel,
+    led_sensor_model: sim_models::LedSensorModel,
     report_model: sim_models::ReportModel,
     processor_model: ProcessorModel,
 }
@@ -120,10 +122,18 @@ async fn main() {
     let mut wtr = csv::WriterBuilder::new().delimiter(b';').from_writer(file);
     wtr.write_record(&["Type", "Value", "Time"]).unwrap();
 
-    let sensor_sim = sim_models::SensorModel::start();
+    let temp_sensor_model = sim_models::TemperatureSensorModel::start();
+    let hum_sensor_model = sim_models::HumiditySensorModel::start();
+    let led_sensor_model = sim_models::LedSensorModel::start();
     let report_model = sim_models::ReportModel::new(wtr, f64::INFINITY);
     let processor_model = ProcessorModel::start(2.0, 1.0, false);
-    let pc_sim = PCSimulation::new(sensor_sim, report_model, processor_model);
+    let pc_sim = PCSimulation::new(
+        temp_sensor_model,
+        hum_sensor_model,
+        led_sensor_model,
+        report_model,
+        processor_model,
+    );
 
     let mut simulator = Simulator::new(pc_sim);
     let config = Config::new(0.0, 600.0, 1.0, None);
