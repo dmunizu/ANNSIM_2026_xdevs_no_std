@@ -6,7 +6,7 @@
     holding buffers for the duration of a data transfer."
 )]
 
-use common_logic::{Command, ProcessorModelInput, ProcessorModelOutput};
+use common_logic::{Command, CommonLogicInput, CommonLogicOutput};
 
 use bme280_rs::{AsyncBme280, Configuration, Oversampling, SensorMode};
 use embassy_executor::Spawner;
@@ -32,9 +32,9 @@ const READ_BUF_SIZE: usize = 20;
 // Input Channel enum and size
 enum ModelInputs {
     Command(Command),
-    Temperature(f64),
-    Humidity(f64),
-    LedState(bool),
+    TempReading(f64),
+    HumReading(f64),
+    LedConfirmation(bool),
 }
 const IN_QUEUE_SIZE: usize = 16;
 type MutexType = embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -42,9 +42,9 @@ static IN_CHANNEL: Channel<MutexType, ModelInputs, IN_QUEUE_SIZE> = Channel::new
 // Output Channel enum and size
 #[derive(Clone, PartialEq)]
 enum ModelOutputs {
-    GetTemp(bool),
-    GetHum(bool),
-    LedCmd(bool),
+    TempRequest(bool),
+    HumRequest(bool),
+    LedCommand(bool),
     TempReport((f64, f64)),
     HumReport((f64, f64)),
     LedReport((bool, f64)),
@@ -71,7 +71,11 @@ async fn read_task(mut rx: UartRx<'static, Async>) {
         match r {
             Ok(len) => {
                 offset += len;
-                let string = str::from_utf8(&rbuf[..offset]).unwrap().trim();
+                let string = core::str::from_utf8(&rbuf[..offset]).unwrap().trim();
+                // Wait for newline delimiter before processing
+                if !rbuf[..offset].contains(&b'\n') {
+                    continue;
+                }
                 let cmd = match string {
                     "TEMP ON" => Command::TempOn,
                     "TEMP OFF" => Command::TempOff,
@@ -81,6 +85,7 @@ async fn read_task(mut rx: UartRx<'static, Async>) {
                     "LED OFF" => Command::LedOff,
                     &_ => {
                         esp_println::println!("Unknown command: {}", string);
+                        offset = 0;
                         continue;
                     }
                 };
@@ -117,18 +122,18 @@ async fn sensor_task(i2c: I2c<'static, Async>) {
 
     loop {
         match sub.next_message_pure().await {
-            ModelOutputs::GetTemp(true) => {
+            ModelOutputs::TempRequest(true) => {
                 let measurements = bme280.read_sample().await.unwrap();
                 let temperature = measurements.temperature.unwrap();
                 IN_CHANNEL
-                    .send(ModelInputs::Temperature(temperature as f64))
+                    .send(ModelInputs::TempReading(temperature as f64))
                     .await;
             }
-            ModelOutputs::GetHum(true) => {
+            ModelOutputs::HumRequest(true) => {
                 let measurements = bme280.read_sample().await.unwrap();
                 let humidity = measurements.humidity.unwrap();
                 IN_CHANNEL
-                    .send(ModelInputs::Humidity(humidity as f64))
+                    .send(ModelInputs::HumReading(humidity as f64))
                     .await;
             }
             _ => {}
@@ -143,14 +148,14 @@ async fn led_task(mut led: Output<'static>) {
     let mut sub = OUT_CHANNEL.subscriber().unwrap();
     loop {
         match sub.next_message_pure().await {
-            ModelOutputs::LedCmd(state) => {
+            ModelOutputs::LedCommand(state) => {
                 if state {
                     led.set_high();
                 } else {
                     led.set_low();
                 }
                 IN_CHANNEL
-                    .send(ModelInputs::LedState(led.is_set_high()))
+                    .send(ModelInputs::LedConfirmation(led.is_set_high()))
                     .await;
             }
             _ => {}
@@ -207,7 +212,7 @@ impl InputHandler {
 }
 
 impl AsyncInput for InputHandler {
-    type Input = ProcessorModelInput;
+    type Input = CommonLogicInput;
 
     async fn handle(
         &mut self,
@@ -225,9 +230,9 @@ impl AsyncInput for InputHandler {
             let rcv = IN_CHANNEL.receiver().receive().await;
             match rcv {
                 ModelInputs::Command(cmd) => input.command.add_value(cmd).unwrap(),
-                ModelInputs::Temperature(temp) => input.temp_ack.add_value(temp).unwrap(),
-                ModelInputs::Humidity(hum) => input.hum_ack.add_value(hum).unwrap(),
-                ModelInputs::LedState(state) => input.led_ack.add_value(state).unwrap(),
+                ModelInputs::TempReading(temp) => input.temp_reading.add_value(temp).unwrap(),
+                ModelInputs::HumReading(hum) => input.hum_reading.add_value(hum).unwrap(),
+                ModelInputs::LedConfirmation(state) => input.led_reading.add_value(state).unwrap(),
             };
         };
         if let Err(_) = with_deadline(next_rt.into(), future).await {
@@ -244,21 +249,21 @@ impl AsyncInput for InputHandler {
     }
 }
 
-fn output_handler(output: &ProcessorModelOutput) {
-    if let Some(&value) = output.get_temp.get_values().last() {
+fn propagate_output(output: &CommonLogicOutput) {
+    if let Some(&value) = output.temp_request.get_values().last() {
         OUT_CHANNEL
             .immediate_publisher()
-            .publish_immediate(ModelOutputs::GetTemp(value));
+            .publish_immediate(ModelOutputs::TempRequest(value));
     }
-    if let Some(&value) = output.get_hum.get_values().last() {
+    if let Some(&value) = output.hum_request.get_values().last() {
         OUT_CHANNEL
             .immediate_publisher()
-            .publish_immediate(ModelOutputs::GetHum(value));
+            .publish_immediate(ModelOutputs::HumRequest(value));
     }
-    if let Some(&value) = output.led_cmd.get_values().last() {
+    if let Some(&value) = output.led_command.get_values().last() {
         OUT_CHANNEL
             .immediate_publisher()
-            .publish_immediate(ModelOutputs::LedCmd(value));
+            .publish_immediate(ModelOutputs::LedCommand(value));
     }
     if let Some(&(temp, t_sim)) = output.temp_report.get_values().last() {
         OUT_CHANNEL
@@ -280,8 +285,6 @@ fn output_handler(output: &ProcessorModelOutput) {
 #[esp_rtos::main]
 async fn main(spawner: Spawner) -> ! {
     // Initial Setup
-    rtt_target::rtt_init_print!();
-
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let p = esp_hal::init(config);
     let timg0 = TimerGroup::new(p.TIMG0);
@@ -316,23 +319,23 @@ async fn main(spawner: Spawner) -> ! {
     let (rx, tx) = uart0.split();
 
     // Prepare simulation
-    let processor = common_logic::ProcessorModel::start(2.0, 1.0, led.is_set_high());
-    let mut simulator = xdevs::simulator::Simulator::new(processor);
+    let controller = common_logic::CommonLogic::create(2.0, 1.0, led.is_set_high());
+    let mut simulator = xdevs::simulator::Simulator::new(controller);
     let config = Config::new(0.0, 600.0, 1.0, None);
     let input_handler = InputHandler::new();
 
     // Spawn tasks
     spawner.spawn(read_task(rx)).unwrap();
-    spawner.spawn(report_task(tx)).unwrap();
     spawner.spawn(sensor_task(i2c)).unwrap();
     spawner.spawn(led_task(led)).unwrap();
+    spawner.spawn(report_task(tx)).unwrap();
 
     // Run the main simulation task
     simulator
-        .simulate_rt_async(&config, input_handler, output_handler)
+        .simulate_rt_async(&config, input_handler, propagate_output)
         .await;
 
-    rtt_target::rprintln!("Simulation completed.");
+    esp_println::println!("Simulation completed.");
 
     loop {
         Timer::after(Duration::from_secs(1)).await;

@@ -1,4 +1,4 @@
-use common_logic::{Command, ProcessorModel};
+use common_logic::{Command, CommonLogic};
 use csv;
 use std::fs::File;
 use std::time::{Duration, Instant};
@@ -12,29 +12,48 @@ use xdevs::{
 
 mod sim_models;
 
+// Temperature sensor constants
+const TEMP_VALUE_MEAN: f64 = 23.354;
+const TEMP_VALUE_STD: f64 = 0.0105;
+const TEMP_TIME_MEAN: f64 = 1782.484;
+const TEMP_TIME_STD: f64 = 134.146;
+const TEMP_SEED: u64 = 91827364502;
+
+// Humidity sensor constants
+const HUM_VALUE_MEAN: f64 = 37.906;
+const HUM_VALUE_STD: f64 = 0.254;
+const HUM_TIME_MEAN: f64 = 1778.452;
+const HUM_TIME_STD: f64 = 135.135;
+const HUM_SEED: u64 = 42583749201;
+
+// LED constants
+const LED_TIME_MEAN: f64 = 438.667;
+const LED_TIME_STD: f64 = 120.194;
+const LED_SEED: u64 = 73619482057;
+
 #[xdevs::coupled(
     couplings = {
-        command -> processor_model.command,
-        processor_model.get_temp -> temp_sensor_model.get_temp,
-        processor_model.get_hum -> hum_sensor_model.get_hum,
-        processor_model.led_cmd -> led_sensor_model.led_cmd,
-        temp_sensor_model.temp_out -> processor_model.temp_ack,
-        hum_sensor_model.hum_out -> processor_model.hum_ack,
-        led_sensor_model.led_out -> processor_model.led_ack,
-        processor_model.temp_report -> report_model.temp_report,
-        processor_model.hum_report -> report_model.hum_report,
-        processor_model.led_report -> report_model.led_report,
+        command -> controller.command,
+        controller.temp_request -> temp_sensor.trigger,
+        controller.hum_request -> hum_sensor.trigger,
+        controller.led_command -> led_actuator.command,
+        temp_sensor.reading -> controller.temp_reading,
+        hum_sensor.reading -> controller.hum_reading,
+        led_actuator.state_out -> controller.led_reading,
+        controller.temp_report -> reporter.temperature_report,
+        controller.hum_report -> reporter.humidity_report,
+        controller.led_report -> reporter.led_report,
     }
 )]
-struct PCSimulation {
+struct PCModel {
     #[input]
     command: Port<Command, 1>,
     #[components]
-    temp_sensor_model: sim_models::TemperatureSensorModel,
-    hum_sensor_model: sim_models::HumiditySensorModel,
-    led_sensor_model: sim_models::LedSensorModel,
-    report_model: sim_models::ReportModel,
-    processor_model: ProcessorModel,
+    temp_sensor: sim_models::SensorModel,
+    hum_sensor: sim_models::SensorModel,
+    led_actuator: sim_models::LedModel,
+    reporter: sim_models::ReportModel,
+    controller: CommonLogic,
 }
 
 struct InputHandler {
@@ -55,7 +74,7 @@ impl InputHandler {
 }
 
 impl AsyncInput for InputHandler {
-    type Input = PCSimulationInput;
+    type Input = PCModelInput;
 
     async fn handle(
         &mut self,
@@ -118,23 +137,38 @@ async fn input_reader_task(sender: Sender<Command>) {
 
 #[tokio::main]
 async fn main() {
+    // Initialize CSV writer
     let file = File::create("data.csv").unwrap();
     let mut wtr = csv::WriterBuilder::new().delimiter(b';').from_writer(file);
     wtr.write_record(&["Type", "Value", "Time"]).unwrap();
 
-    let temp_sensor_model = sim_models::TemperatureSensorModel::start();
-    let hum_sensor_model = sim_models::HumiditySensorModel::start();
-    let led_sensor_model = sim_models::LedSensorModel::start();
-    let report_model = sim_models::ReportModel::new(wtr, f64::INFINITY);
-    let processor_model = ProcessorModel::start(2.0, 1.0, false);
-    let pc_sim = PCSimulation::new(
-        temp_sensor_model,
-        hum_sensor_model,
-        led_sensor_model,
-        report_model,
-        processor_model,
+    // Initialize simulation models
+    let temp_sensor = sim_models::SensorModel::create(
+        TEMP_VALUE_MEAN,
+        TEMP_VALUE_STD,
+        TEMP_TIME_MEAN,
+        TEMP_TIME_STD,
+        TEMP_SEED,
+    );
+    let hum_sensor = sim_models::SensorModel::create(
+        HUM_VALUE_MEAN,
+        HUM_VALUE_STD,
+        HUM_TIME_MEAN,
+        HUM_TIME_STD,
+        HUM_SEED,
+    );
+    let led_actuator = sim_models::LedModel::create(LED_TIME_MEAN, LED_TIME_STD, LED_SEED);
+    let reporter = sim_models::ReportModel::new(wtr, f64::INFINITY);
+    let controller = CommonLogic::create(2.0, 1.0, false);
+    let pc_sim = PCModel::new(
+        temp_sensor,
+        hum_sensor,
+        led_actuator,
+        reporter,
+        controller,
     );
 
+    // Set up the simulator and input handler
     let mut simulator = Simulator::new(pc_sim);
     let config = Config::new(0.0, 600.0, 1.0, None);
     let input_handler = InputHandler::new(20);

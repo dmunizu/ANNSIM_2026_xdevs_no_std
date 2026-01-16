@@ -1,14 +1,38 @@
 
 import serial
+import serial.tools.list_ports
 import time
 import csv
 import threading
 import numpy as np
 from collections import defaultdict
 
-PORT = "/dev/ttyUSB0"
+def find_esp32_port():
+    ports = serial.tools.list_ports.comports()
+
+    for p in ports:
+        name = p.device
+        desc = p.description.lower()
+
+        # Heuristics that match ESP32-C6 USB UART chips
+        if ("usb" in name.lower() or "com" in name.lower()) and (
+            "esp" in desc or "silicon labs" in desc or "cp210" in desc or "ch340" in desc
+        ):
+            return name
+
+    # Fallback: return first available port
+    if ports:
+        return ports[0].device
+
+    raise RuntimeError("No serial ports found. Is the ESP32-C6 connected?")
+
+
+PORT = find_esp32_port()
 BAUD = 115200
 CSV_FILE = "data.csv"
+
+# Global flag for reader thread
+reader_running = True
 
 # ---------------------------
 # CSV INITIALIZATION
@@ -21,8 +45,9 @@ with open(CSV_FILE, "w", newline='') as f:
 # ---------------------------
 # SERIAL READER THREAD
 # ---------------------------
-def reader():
-    ser = serial.Serial(PORT, BAUD, timeout=1)
+def reader(ser):
+    """Reader function that uses the shared serial connection."""
+    global reader_running
     print("Reader started.")
 
     with open(CSV_FILE, "a", newline='') as f:
@@ -44,9 +69,9 @@ def reader():
                 continue  # ignore invalid types
 
             writer.writerow([data_type, value, timestamp])
+            f.flush()  # Ensure data is written immediately
             print("Logged:", parts)
 
-    ser.close()
     print("Reader stopped.")
 
 
@@ -124,47 +149,48 @@ def compute_distribution_params(numeric_data, led_data):
 # ---------------------------
 # MAIN PROGRAM
 # ---------------------------
-ser = serial.Serial(PORT, BAUD, timeout=1)
+if __name__ == "__main__":
+    ser = serial.Serial(PORT, BAUD, timeout=1)
 
-reader_running = True
-reader_thread = threading.Thread(target=reader)
-reader_thread.start()
+    reader_running = True
+    reader_thread = threading.Thread(target=reader, args=(ser,))
+    reader_thread.start()
 
-time.sleep(0.2)
+    time.sleep(0.2)
 
-send(ser, "TEMP ON")
-send(ser, "HUM ON")
+    send(ser, "TEMP ON")
+    send(ser, "HUM ON")
 
-for _ in range(30):
-    send(ser, "LED ON")
-    send(ser, "LED OFF")
+    for _ in range(30):
+        send(ser, "LED ON")
+        send(ser, "LED OFF")
 
-send(ser, "TEMP OFF")
-send(ser, "HUM OFF")
+    send(ser, "TEMP OFF")
+    send(ser, "HUM OFF")
 
-reader_running = False
-reader_thread.join()
+    reader_running = False
+    reader_thread.join()
 
-ser.close()
-print("Data collection done.")
+    ser.close()
+    print("Data collection done.")
 
-# ---------------------------
-# ANALYSIS AFTER CSV COMPLETE
-# ---------------------------
-numeric_data, led_data = load_data(CSV_FILE)
+    # ---------------------------
+    # ANALYSIS AFTER CSV COMPLETE
+    # ---------------------------
+    numeric_data, led_data = load_data(CSV_FILE)
 
-print("\nExtracted Data:")
-for k, v in numeric_data.items():
-    print(f"{k}: {len(v['Value'])} entries")
-print(f"LED: {len(led_data['Time'])} entries")
+    print("\nExtracted Data:")
+    for k, v in numeric_data.items():
+        print(f"{k}: {len(v['Value'])} entries")
+    print(f"LED: {len(led_data['Time'])} entries")
 
-distribution_params = compute_distribution_params(numeric_data, led_data)
-print("\nNormal Distribution Parameters:")
-for dtype, params in distribution_params.items():
-    print(f"\n{dtype}:")
-    if isinstance(params, dict):
-        for key, val in params.items():
-            print(f"  {key}: {val}")
-    else:
-        print(f"  {params}")
+    distribution_params = compute_distribution_params(numeric_data, led_data)
+    print("\nNormal Distribution Parameters:")
+    for dtype, params in distribution_params.items():
+        print(f"\n{dtype}:")
+        if isinstance(params, dict):
+            for key, val in params.items():
+                print(f"  {key}: {val}")
+        else:
+            print(f"  {params}")
 
