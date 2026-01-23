@@ -23,11 +23,11 @@ enum Mode {
 #[xdevs::atomic]
 struct Orchestrator {
     #[input]
-    command: Port<Command, 1>,
+    in_command: Port<Command, 1>,
     #[output]
-    temp_enable: Port<bool, 1>,
-    hum_enable: Port<bool, 1>,
-    led_set: Port<bool, 1>,
+    out_temp_enable: Port<bool, 1>,
+    out_hum_enable: Port<bool, 1>,
+    out_led_set: Port<bool, 1>,
     #[state]
     pending_command: Option<Command>,
     sigma: f64,
@@ -41,12 +41,12 @@ impl xdevs::Atomic for Orchestrator {
     fn lambda(state: &Self::State, output: &mut Self::Output) {
         if let Some(command) = state.pending_command {
             match command {
-                Command::TempOn => output.temp_enable.add_value(true).unwrap(),
-                Command::TempOff => output.temp_enable.add_value(false).unwrap(),
-                Command::HumOn => output.hum_enable.add_value(true).unwrap(),
-                Command::HumOff => output.hum_enable.add_value(false).unwrap(),
-                Command::LedOn => output.led_set.add_value(true).unwrap(),
-                Command::LedOff => output.led_set.add_value(false).unwrap(),
+                Command::TempOn => output.out_temp_enable.add_value(true).unwrap(),
+                Command::TempOff => output.out_temp_enable.add_value(false).unwrap(),
+                Command::HumOn => output.out_hum_enable.add_value(true).unwrap(),
+                Command::HumOff => output.out_hum_enable.add_value(false).unwrap(),
+                Command::LedOn => output.out_led_set.add_value(true).unwrap(),
+                Command::LedOff => output.out_led_set.add_value(false).unwrap(),
             }
         }
     }
@@ -56,7 +56,7 @@ impl xdevs::Atomic for Orchestrator {
     }
 
     fn delta_ext(state: &mut Self::State, _elapsed: f64, input: &Self::Input) {
-        if let Some(command) = input.command.get_values().last() {
+        if let Some(command) = input.in_command.get_values().last() {
             state.pending_command = Some(*command);
             state.sigma = 0.0;
         }
@@ -72,11 +72,11 @@ impl Orchestrator {
 #[xdevs::atomic]
 struct SensorHandler {
     #[input]
-    enable: Port<bool, 1>,
-    reading: Port<f64, 1>,
+    in_enable: Port<bool, 1>,
+    in_reading: Port<f64, 1>,
     #[output]
-    request: Port<bool, 1>,
-    report: Port<(f64, f64), 1>,
+    out_request: Port<bool, 1>,
+    out_report: Port<(f64, f64), 1>,
     #[state]
     phase: Mode,
     sigma: f64,
@@ -107,10 +107,10 @@ impl xdevs::Atomic for SensorHandler {
     fn lambda(state: &Self::State, output: &mut Self::Output) {
         match state.phase {
             Mode::Idle => {
-                output.request.add_value(true).unwrap();
+                output.out_request.add_value(true).unwrap();
             }
             Mode::AckReceived => {
-                output.report.add_value(state.pending_report).unwrap();
+                output.out_report.add_value(state.pending_report).unwrap();
             }
             _ => {}
         }
@@ -123,7 +123,7 @@ impl xdevs::Atomic for SensorHandler {
     fn delta_ext(state: &mut Self::State, elapsed: f64, input: &Self::Input) {
         match state.phase {
             Mode::Off => {
-                if let Some(&enabled) = input.enable.get_values().last() {
+                if let Some(&enabled) = input.in_enable.get_values().last() {
                     if enabled {
                         state.phase = Mode::Idle;
                         state.sigma = 0.0;
@@ -131,7 +131,7 @@ impl xdevs::Atomic for SensorHandler {
                 }
             }
             Mode::Idle => {
-                if let Some(&enabled) = input.enable.get_values().last() {
+                if let Some(&enabled) = input.in_enable.get_values().last() {
                     if !enabled {
                         state.phase = Mode::Off;
                         state.sigma = f64::INFINITY;
@@ -139,19 +139,19 @@ impl xdevs::Atomic for SensorHandler {
                 }
             }
             Mode::WaitingAck => {
-                if let Some(&enabled) = input.enable.get_values().last() {
+                if let Some(&enabled) = input.in_enable.get_values().last() {
                     if !enabled {
                         state.phase = Mode::Off;
                         state.sigma = f64::INFINITY;
                     }
-                } else if let Some(&value) = input.reading.get_values().last() {
+                } else if let Some(&value) = input.in_reading.get_values().last() {
                     state.pending_report = (value, elapsed);
                     state.phase = Mode::AckReceived;
                     state.sigma = state.period - elapsed;
                 }
             }
             Mode::AckReceived => {
-                if let Some(&enabled) = input.enable.get_values().last() {
+                if let Some(&enabled) = input.in_enable.get_values().last() {
                     if !enabled {
                         state.phase = Mode::Off;
                         state.sigma = f64::INFINITY;
@@ -171,11 +171,11 @@ impl SensorHandler {
 #[xdevs::atomic]
 struct LedHandler {
     #[input]
-    enable: Port<bool, 1>,
-    confirmation: Port<bool, 1>,
+    in_enable: Port<bool, 1>,
+    in_confirmation: Port<bool, 1>,
     #[output]
-    set_state: Port<bool, 1>,
-    report: Port<(bool, f64), 1>,
+    out_set_state: Port<bool, 1>,
+    out_report: Port<(bool, f64), 1>,
     #[state]
     phase: Mode,
     sigma: f64,
@@ -202,10 +202,10 @@ impl xdevs::Atomic for LedHandler {
     fn lambda(state: &Self::State, output: &mut Self::Output) {
         match state.phase {
             Mode::Idle => {
-                output.set_state.add_value(state.target_state).unwrap();
+                output.out_set_state.add_value(state.target_state).unwrap();
             }
             Mode::AckReceived => {
-                output.report.add_value(state.pending_report).unwrap();
+                output.out_report.add_value(state.pending_report).unwrap();
             }
             _ => {}
         }
@@ -218,14 +218,14 @@ impl xdevs::Atomic for LedHandler {
     fn delta_ext(state: &mut Self::State, elapsed: f64, input: &Self::Input) {
         match state.phase {
             Mode::Off => {
-                if let Some(&new_state) = input.enable.get_values().last() {
+                if let Some(&new_state) = input.in_enable.get_values().last() {
                     state.target_state = new_state;
                     state.phase = Mode::Idle;
                     state.sigma = 0.0;
                 }
             }
             Mode::WaitingAck => {
-                if let Some(&confirmed) = input.confirmation.get_values().last() {
+                if let Some(&confirmed) = input.in_confirmation.get_values().last() {
                     state.pending_report = (confirmed, elapsed);
                     state.phase = Mode::AckReceived;
                     state.sigma = 0.0;
@@ -244,34 +244,34 @@ impl LedHandler {
 
 #[xdevs::coupled(
 couplings = {
-        command -> orchestrator.command,
-        temp_reading -> temp_handler.reading,
-        hum_reading -> hum_handler.reading,
-        led_reading -> led_handler.confirmation,
-        orchestrator.temp_enable -> temp_handler.enable,
-        orchestrator.hum_enable -> hum_handler.enable,
-        orchestrator.led_set -> led_handler.enable,
-        temp_handler.request -> temp_request,
-        temp_handler.report -> temp_report,
-        hum_handler.request -> hum_request,
-        hum_handler.report -> hum_report,
-        led_handler.set_state -> led_command,
-        led_handler.report -> led_report,
+        in_command -> orchestrator.in_command,
+        in_temp_reading -> temp_handler.in_reading,
+        in_hum_reading -> hum_handler.in_reading,
+        in_led_reading -> led_handler.in_confirmation,
+        orchestrator.out_temp_enable -> temp_handler.in_enable,
+        orchestrator.out_hum_enable -> hum_handler.in_enable,
+        orchestrator.out_led_set -> led_handler.in_enable,
+        temp_handler.out_request -> out_temp_req,
+        temp_handler.out_report -> out_temp_rep,
+        hum_handler.out_request -> out_hum_req,
+        hum_handler.out_report -> out_hum_rep,
+        led_handler.out_set_state -> out_led_cmd,
+        led_handler.out_report -> out_led_rep,
     }
 )]
 pub struct CommonLogic {
     #[input]
-    command: Port<Command, 1>,
-    temp_reading: Port<f64, 1>,
-    hum_reading: Port<f64, 1>,
-    led_reading: Port<bool, 1>,
+    in_command: Port<Command, 1>,
+    in_temp_reading: Port<f64, 1>,
+    in_hum_reading: Port<f64, 1>,
+    in_led_reading: Port<bool, 1>,
     #[output]
-    temp_request: Port<bool, 1>,
-    hum_request: Port<bool, 1>,
-    led_command: Port<bool, 1>,
-    temp_report: Port<(f64, f64), 1>,
-    hum_report: Port<(f64, f64), 1>,
-    led_report: Port<(bool, f64), 1>,
+    out_temp_req: Port<bool, 1>,
+    out_hum_req: Port<bool, 1>,
+    out_led_cmd: Port<bool, 1>,
+    out_temp_rep: Port<(f64, f64), 1>,
+    out_hum_rep: Port<(f64, f64), 1>,
+    out_led_rep: Port<(bool, f64), 1>,
     #[components]
     orchestrator: Orchestrator,
     temp_handler: SensorHandler,

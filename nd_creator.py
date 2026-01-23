@@ -68,6 +68,13 @@ def reader(ser):
             if data_type not in ["Temperature", "Humidity", "LED"]:
                 continue  # ignore invalid types
 
+            # Limit decimal places to 2 for Temperature and Humidity
+            if data_type in ["Temperature", "Humidity"]:
+                try:
+                    value = f"{float(value):.2f}"
+                except ValueError:
+                    pass  # keep original value if conversion fails
+
             writer.writerow([data_type, value, timestamp])
             f.flush()  # Ensure data is written immediately
             print("Logged:", parts)
@@ -126,10 +133,10 @@ def compute_distribution_params(numeric_data, led_data):
         times = np.array(fields["Time"])
         if len(values) > 1:
             dist[dtype] = {
-                "value_mean": float(values.mean()),
-                "value_std": float(values.std(ddof=1)),
-                "time_mean": float(times.mean()),
-                "time_std": float(times.std(ddof=1))
+                "value_mean": round(float(values.mean()), 2),
+                "value_std": round(float(values.std(ddof=1)), 2),
+                "time_mean": round(float(times.mean()), 2),
+                "time_std": round(float(times.std(ddof=1)), 2)
             }
         else:
             dist[dtype] = "Not enough data for distribution"
@@ -137,8 +144,8 @@ def compute_distribution_params(numeric_data, led_data):
     led_times = np.array(led_data["Time"])
     if len(led_times) > 1:
         dist["LED"] = {
-            "time_mean": float(led_times.mean()),
-            "time_std": float(led_times.std(ddof=1)),
+            "time_mean": round(float(led_times.mean()), 2),
+            "time_std": round(float(led_times.std(ddof=1)), 2),
         }
     else:
         dist["LED"] = "Not enough LED data"

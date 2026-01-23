@@ -7,9 +7,9 @@ use xdevs::port::Port;
 #[xdevs::atomic]
 pub struct SensorModel {
     #[input]
-    trigger: Port<bool, 1>,
+    in_trigger: Port<bool, 1>,
     #[output]
-    reading: Port<f64, 1>,
+    out_reading: Port<f64, 1>,
     #[state]
     pending_value: Option<f64>,
     value_dist: Normal<f64>,
@@ -26,7 +26,7 @@ impl xdevs::Atomic for SensorModel {
 
     fn lambda(state: &Self::State, output: &mut Self::Output) {
         if let Some(value) = state.pending_value {
-            output.reading.add_value(value).unwrap();
+            output.out_reading.add_value(value).unwrap();
         }
     }
 
@@ -35,7 +35,7 @@ impl xdevs::Atomic for SensorModel {
     }
 
     fn delta_ext(state: &mut Self::State, _elapsed: f64, input: &Self::Input) {
-        if let Some(_) = input.trigger.get_values().last() {
+        if let Some(_) = input.in_trigger.get_values().last() {
             state.pending_value = Some(state.value_dist.sample(&mut state.rng));
             state.sigma = state.time_dist.sample(&mut state.rng) / 1_000_000.0;
         }
@@ -60,9 +60,9 @@ impl SensorModel {
 #[xdevs::atomic]
 pub struct LedModel {
     #[input]
-    command: Port<bool, 1>,
+    in_command: Port<bool, 1>,
     #[output]
-    state_out: Port<bool, 1>,
+    out_state: Port<bool, 1>,
     #[state]
     pending_state: Option<bool>,
     time_dist: Normal<f64>,
@@ -78,7 +78,7 @@ impl xdevs::Atomic for LedModel {
 
     fn lambda(state: &Self::State, output: &mut Self::Output) {
         if let Some(led_state) = state.pending_state {
-            output.state_out.add_value(led_state).unwrap();
+            output.out_state.add_value(led_state).unwrap();
         }
     }
 
@@ -87,7 +87,7 @@ impl xdevs::Atomic for LedModel {
     }
 
     fn delta_ext(state: &mut Self::State, _elapsed: f64, input: &Self::Input) {
-        if let Some(&cmd) = input.command.get_values().last() {
+        if let Some(&cmd) = input.in_command.get_values().last() {
             state.pending_state = Some(cmd);
             state.sigma = state.time_dist.sample(&mut state.rng) / 1_000_000.0;
         }
@@ -105,9 +105,9 @@ impl LedModel {
 #[xdevs::atomic]
 struct ReportModel {
     #[input]
-    temperature_report: Port<(f64, f64), 1>,
-    humidity_report: Port<(f64, f64), 1>,
-    led_report: Port<(bool, f64), 1>,
+    in_temp_rep: Port<(f64, f64), 1>,
+    in_hum_rep: Port<(f64, f64), 1>,
+    in_led_rep: Port<(bool, f64), 1>,
     #[state]
     writer: csv::Writer<File>,
     sigma: f64,
@@ -124,7 +124,7 @@ impl xdevs::Atomic for ReportModel {
     }
 
     fn delta_ext(state: &mut Self::State, _elapsed: f64, input: &Self::Input) {
-        if let Some(&(temp, time)) = input.temperature_report.get_values().last() {
+        if let Some(&(temp, time)) = input.in_temp_rep.get_values().last() {
             let time = time * 1000_000.0;
             state
                 .writer
@@ -136,7 +136,7 @@ impl xdevs::Atomic for ReportModel {
                 .unwrap();
             state.writer.flush().unwrap();
         }
-        if let Some(&(hum, time)) = input.humidity_report.get_values().last() {
+        if let Some(&(hum, time)) = input.in_hum_rep.get_values().last() {
             let time = time * 1000_000.0;
             state
                 .writer
@@ -144,7 +144,7 @@ impl xdevs::Atomic for ReportModel {
                 .unwrap();
             state.writer.flush().unwrap();
         }
-        if let Some(&(led, time)) = input.led_report.get_values().last() {
+        if let Some(&(led, time)) = input.in_led_rep.get_values().last() {
             let time = time * 1000_000.0;
             let led_state = if led { "ON" } else { "OFF" };
             state

@@ -13,41 +13,41 @@ use xdevs::{
 mod sim_models;
 
 // Temperature sensor constants
-const TEMP_VALUE_MEAN: f64 = 23.354;
-const TEMP_VALUE_STD: f64 = 0.0105;
-const TEMP_TIME_MEAN: f64 = 1782.484;
-const TEMP_TIME_STD: f64 = 134.146;
+const TEMP_VALUE_MEAN: f64 = 23.63;
+const TEMP_VALUE_STD: f64 = 0.07;
+const TEMP_TIME_MEAN: f64 = 1812.65;
+const TEMP_TIME_STD: f64 = 126.65;
 const TEMP_SEED: u64 = 91827364502;
 
 // Humidity sensor constants
-const HUM_VALUE_MEAN: f64 = 37.906;
-const HUM_VALUE_STD: f64 = 0.254;
-const HUM_TIME_MEAN: f64 = 1778.452;
-const HUM_TIME_STD: f64 = 135.135;
+const HUM_VALUE_MEAN: f64 = 31.87;
+const HUM_VALUE_STD: f64 = 0.04;
+const HUM_TIME_MEAN: f64 = 1796.9;
+const HUM_TIME_STD: f64 = 94.05;
 const HUM_SEED: u64 = 42583749201;
 
 // LED constants
-const LED_TIME_MEAN: f64 = 438.667;
-const LED_TIME_STD: f64 = 120.194;
+const LED_TIME_MEAN: f64 = 492.58;
+const LED_TIME_STD: f64 = 114.83;
 const LED_SEED: u64 = 73619482057;
 
 #[xdevs::coupled(
     couplings = {
-        command -> controller.command,
-        controller.temp_request -> temp_sensor.trigger,
-        controller.hum_request -> hum_sensor.trigger,
-        controller.led_command -> led_actuator.command,
-        temp_sensor.reading -> controller.temp_reading,
-        hum_sensor.reading -> controller.hum_reading,
-        led_actuator.state_out -> controller.led_reading,
-        controller.temp_report -> reporter.temperature_report,
-        controller.hum_report -> reporter.humidity_report,
-        controller.led_report -> reporter.led_report,
+        in_command -> controller.in_command,
+        controller.out_temp_req -> temp_sensor.in_trigger,
+        controller.out_hum_req -> hum_sensor.in_trigger,
+        controller.out_led_cmd -> led_actuator.in_command,
+        temp_sensor.out_reading -> controller.in_temp_reading,
+        hum_sensor.out_reading -> controller.in_hum_reading,
+        led_actuator.out_state -> controller.in_led_reading,
+        controller.out_temp_rep -> reporter.in_temp_rep,
+        controller.out_hum_rep -> reporter.in_hum_rep,
+        controller.out_led_rep -> reporter.in_led_rep,
     }
 )]
-struct PCModel {
+struct PcModel {
     #[input]
-    command: Port<Command, 1>,
+    in_command: Port<Command, 1>,
     #[components]
     temp_sensor: sim_models::SensorModel,
     hum_sensor: sim_models::SensorModel,
@@ -56,13 +56,13 @@ struct PCModel {
     controller: CommonLogic,
 }
 
-struct InputHandler {
+struct PcInputHandler {
     sender: Sender<Command>,
     receiver: Receiver<Command>,
     last_rt: Option<Instant>,
 }
 
-impl InputHandler {
+impl PcInputHandler {
     fn new(buffer: usize) -> Self {
         let (sender, receiver) = channel(buffer);
         Self {
@@ -73,8 +73,8 @@ impl InputHandler {
     }
 }
 
-impl AsyncInput for InputHandler {
-    type Input = PCModelInput;
+impl AsyncInput for PcInputHandler {
+    type Input = PcModelInput;
 
     async fn handle(
         &mut self,
@@ -89,10 +89,17 @@ impl AsyncInput for InputHandler {
         let future = async {
             let cmd = self.receiver.recv().await;
             if let Some(cmd) = cmd {
-                input.command.add_value(cmd).unwrap();
+                input.in_command.add_value(cmd).unwrap();
             }
         };
         if let Err(_) = tokio::time::timeout_at(next_rt.into(), future).await {
+            // Deadline reached (timeout), check for jitter
+            if let Some(max_jitter) = config.max_jitter {
+                let jitter = Instant::now().duration_since(next_rt);
+                if jitter > max_jitter {
+                    panic!("[WE]>> Jitter too high: {:?}", jitter);
+                }
+            }
             self.last_rt = Some(next_rt);
             return t_until;
         } else {
@@ -160,7 +167,7 @@ async fn main() {
     let led_actuator = sim_models::LedModel::create(LED_TIME_MEAN, LED_TIME_STD, LED_SEED);
     let reporter = sim_models::ReportModel::new(wtr, f64::INFINITY);
     let controller = CommonLogic::create(2.0, 1.0, false);
-    let pc_sim = PCModel::new(
+    let pc_sim = PcModel::new(
         temp_sensor,
         hum_sensor,
         led_actuator,
@@ -171,7 +178,7 @@ async fn main() {
     // Set up the simulator and input handler
     let mut simulator = Simulator::new(pc_sim);
     let config = Config::new(0.0, 600.0, 1.0, None);
-    let input_handler = InputHandler::new(20);
+    let input_handler = PcInputHandler::new(20);
     let sender = input_handler.sender.clone();
 
     // Spawn the dedicated input reader function

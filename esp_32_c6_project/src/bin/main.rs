@@ -201,17 +201,17 @@ async fn report_task(mut tx: UartTx<'static, Async>) {
     }
 }
 
-struct InputHandler {
+struct Esp32InputHandler {
     last_rt: Option<Instant>,
 }
 
-impl InputHandler {
+impl Esp32InputHandler {
     fn new() -> Self {
         Self { last_rt: None }
     }
 }
 
-impl AsyncInput for InputHandler {
+impl AsyncInput for Esp32InputHandler {
     type Input = CommonLogicInput;
 
     async fn handle(
@@ -227,15 +227,33 @@ impl AsyncInput for InputHandler {
         let next_rt = last_rt + Duration::from_nanos(time_duration);
 
         let future = async {
+            // Wait for at least one input
             let rcv = IN_CHANNEL.receiver().receive().await;
             match rcv {
-                ModelInputs::Command(cmd) => input.command.add_value(cmd).unwrap(),
-                ModelInputs::TempReading(temp) => input.temp_reading.add_value(temp).unwrap(),
-                ModelInputs::HumReading(hum) => input.hum_reading.add_value(hum).unwrap(),
-                ModelInputs::LedConfirmation(state) => input.led_reading.add_value(state).unwrap(),
+                ModelInputs::Command(cmd) => input.in_command.add_value(cmd).unwrap(),
+                ModelInputs::TempReading(temp) => input.in_temp_reading.add_value(temp).unwrap(),
+                ModelInputs::HumReading(hum) => input.in_hum_reading.add_value(hum).unwrap(),
+                ModelInputs::LedConfirmation(state) => input.in_led_reading.add_value(state).unwrap(),
             };
+            // Drain all additional inputs that arrived at the same time
+            while let Ok(rcv) = IN_CHANNEL.try_receive() {
+                match rcv {
+                    ModelInputs::Command(cmd) => input.in_command.add_value(cmd).unwrap(),
+                    ModelInputs::TempReading(temp) => input.in_temp_reading.add_value(temp).unwrap(),
+                    ModelInputs::HumReading(hum) => input.in_hum_reading.add_value(hum).unwrap(),
+                    ModelInputs::LedConfirmation(state) => input.in_led_reading.add_value(state).unwrap(),
+                };
+            }
         };
         if let Err(_) = with_deadline(next_rt.into(), future).await {
+            // Deadline reached (timeout), check for jitter
+            if let Some(max_jitter) = config.max_jitter {
+                let jitter = Instant::now().duration_since(next_rt);
+                let max_jitter_ticks = Duration::from_micros(max_jitter.as_micros() as u64);
+                if jitter > max_jitter_ticks {
+                    panic!("Jitter too high: {:?}", jitter);
+                }
+            }
             self.last_rt = Some(next_rt);
             return t_until;
         } else {
@@ -250,32 +268,32 @@ impl AsyncInput for InputHandler {
 }
 
 fn propagate_output(output: &CommonLogicOutput) {
-    if let Some(&value) = output.temp_request.get_values().last() {
+    if let Some(&value) = output.out_temp_req.get_values().last() {
         OUT_CHANNEL
             .immediate_publisher()
             .publish_immediate(ModelOutputs::TempRequest(value));
     }
-    if let Some(&value) = output.hum_request.get_values().last() {
+    if let Some(&value) = output.out_hum_req.get_values().last() {
         OUT_CHANNEL
             .immediate_publisher()
             .publish_immediate(ModelOutputs::HumRequest(value));
     }
-    if let Some(&value) = output.led_command.get_values().last() {
+    if let Some(&value) = output.out_led_cmd.get_values().last() {
         OUT_CHANNEL
             .immediate_publisher()
             .publish_immediate(ModelOutputs::LedCommand(value));
     }
-    if let Some(&(temp, t_sim)) = output.temp_report.get_values().last() {
+    if let Some(&(temp, t_sim)) = output.out_temp_rep.get_values().last() {
         OUT_CHANNEL
             .immediate_publisher()
             .publish_immediate(ModelOutputs::TempReport((temp, t_sim)));
     }
-    if let Some(&(hum, t_sim)) = output.hum_report.get_values().last() {
+    if let Some(&(hum, t_sim)) = output.out_hum_rep.get_values().last() {
         OUT_CHANNEL
             .immediate_publisher()
             .publish_immediate(ModelOutputs::HumReport((hum, t_sim)));
     }
-    if let Some(&(state, t_sim)) = output.led_report.get_values().last() {
+    if let Some(&(state, t_sim)) = output.out_led_rep.get_values().last() {
         OUT_CHANNEL
             .immediate_publisher()
             .publish_immediate(ModelOutputs::LedReport((state, t_sim)));
@@ -322,7 +340,7 @@ async fn main(spawner: Spawner) -> ! {
     let controller = common_logic::CommonLogic::create(2.0, 1.0, led.is_set_high());
     let mut simulator = xdevs::simulator::Simulator::new(controller);
     let config = Config::new(0.0, 600.0, 1.0, None);
-    let input_handler = InputHandler::new();
+    let input_handler = Esp32InputHandler::new();
 
     // Spawn tasks
     spawner.spawn(read_task(rx)).unwrap();
