@@ -337,7 +337,7 @@ async fn main(spawner: Spawner) -> ! {
     let (rx, tx) = uart0.split();
 
     // Prepare simulation
-    let controller = common_logic::CommonLogic::create(2.0, 1.0, led.is_set_high());
+    let controller = common_logic::CommonLogic::new(2.0, 1.0, led.is_set_high());
     let mut simulator = xdevs::simulator::Simulator::new(controller);
     let config = Config::new(0.0, 600.0, 1.0, None);
     let input_handler = Esp32InputHandler::new();

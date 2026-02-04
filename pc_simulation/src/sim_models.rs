@@ -43,7 +43,7 @@ impl xdevs::Atomic for SensorModel {
 }
 
 impl SensorModel {
-    pub fn create(
+    pub fn new(
         value_mean: f64,
         value_std: f64,
         time_mean: f64,
@@ -53,7 +53,7 @@ impl SensorModel {
         let value_dist = Normal::new(value_mean, value_std).unwrap();
         let time_dist = Normal::new(time_mean, time_std).unwrap();
         let rng = StdRng::seed_from_u64(seed);
-        SensorModel::new(None, value_dist, time_dist, rng, f64::INFINITY)
+        SensorModel::build(None, value_dist, time_dist, rng, f64::INFINITY)
     }
 }
 
@@ -95,10 +95,10 @@ impl xdevs::Atomic for LedModel {
 }
 
 impl LedModel {
-    pub fn create(time_mean: f64, time_std: f64, seed: u64) -> Self {
+    pub fn new(time_mean: f64, time_std: f64, seed: u64) -> Self {
         let time_dist = Normal::new(time_mean, time_std).unwrap();
         let rng = StdRng::seed_from_u64(seed);
-        LedModel::new(None, time_dist, rng, f64::INFINITY)
+        LedModel::build(None, time_dist, rng, f64::INFINITY)
     }
 }
 

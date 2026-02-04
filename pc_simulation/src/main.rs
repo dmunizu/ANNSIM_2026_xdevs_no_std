@@ -150,24 +150,24 @@ async fn main() {
     wtr.write_record(&["Type", "Value", "Time"]).unwrap();
 
     // Initialize simulation models
-    let temp_sensor = sim_models::SensorModel::create(
+    let temp_sensor = sim_models::SensorModel::new(
         TEMP_VALUE_MEAN,
         TEMP_VALUE_STD,
         TEMP_TIME_MEAN,
         TEMP_TIME_STD,
         TEMP_SEED,
     );
-    let hum_sensor = sim_models::SensorModel::create(
+    let hum_sensor = sim_models::SensorModel::new(
         HUM_VALUE_MEAN,
         HUM_VALUE_STD,
         HUM_TIME_MEAN,
         HUM_TIME_STD,
         HUM_SEED,
     );
-    let led_actuator = sim_models::LedModel::create(LED_TIME_MEAN, LED_TIME_STD, LED_SEED);
-    let reporter = sim_models::ReportModel::new(wtr, f64::INFINITY);
-    let controller = CommonLogic::create(2.0, 1.0, false);
-    let pc_sim = PcModel::new(
+    let led_actuator = sim_models::LedModel::new(LED_TIME_MEAN, LED_TIME_STD, LED_SEED);
+    let reporter = sim_models::ReportModel::build(wtr, f64::INFINITY);
+    let controller = CommonLogic::new(2.0, 1.0, false);
+    let pc_sim = PcModel::build(
         temp_sensor,
         hum_sensor,
         led_actuator,

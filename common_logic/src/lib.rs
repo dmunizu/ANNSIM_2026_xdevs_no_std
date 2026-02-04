@@ -64,8 +64,8 @@ impl xdevs::Atomic for Orchestrator {
 }
 
 impl Orchestrator {
-    pub fn create() -> Self {
-        Orchestrator::new(None, f64::INFINITY)
+    pub fn new() -> Self {
+        Orchestrator::build(None, f64::INFINITY)
     }
 }
 
@@ -163,8 +163,8 @@ impl xdevs::Atomic for SensorHandler {
 }
 
 impl SensorHandler {
-    pub fn create(period: f64, deadline: f64) -> Self {
-        SensorHandler::new(Mode::Off, f64::INFINITY, (0.0, 0.0), period, deadline)
+    pub fn new(period: f64, deadline: f64) -> Self {
+        SensorHandler::build(Mode::Off, f64::INFINITY, (0.0, 0.0), period, deadline)
     }
 }
 
@@ -237,8 +237,8 @@ impl xdevs::Atomic for LedHandler {
 }
 
 impl LedHandler {
-    pub fn create(initial_state: bool, deadline: f64) -> Self {
-        LedHandler::new(Mode::Off, f64::INFINITY, (false, 0.0), initial_state, deadline)
+    pub fn new(initial_state: bool, deadline: f64) -> Self {
+        LedHandler::build(Mode::Off, f64::INFINITY, (false, 0.0), initial_state, deadline)
     }
 }
 
@@ -280,12 +280,12 @@ pub struct CommonLogic {
 }
 
 impl CommonLogic {
-    pub fn create(period: f64, deadline: f64, initial_led_state: bool) -> Self {
-        CommonLogic::new(
-            Orchestrator::create(),
-            SensorHandler::create(period, deadline),
-            SensorHandler::create(period, deadline),
-            LedHandler::create(initial_led_state, deadline),
+    pub fn new(period: f64, deadline: f64, initial_led_state: bool) -> Self {
+        CommonLogic::build(
+            Orchestrator::new(),
+            SensorHandler::new(period, deadline),
+            SensorHandler::new(period, deadline),
+            LedHandler::new(initial_led_state, deadline),
         )
     }
 }
