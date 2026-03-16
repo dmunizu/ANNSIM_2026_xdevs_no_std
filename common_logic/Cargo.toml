@@ -4,4 +4,4 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-xdevs-no-std = {git = "https://github.com/iscar-ucm/xdevs_no_std.rs.git", branch = "component2"}
+xdevs-no-std = { git = "https://github.com/iscar-ucm/xdevs_no_std.rs.git", rev = "998f70a" }

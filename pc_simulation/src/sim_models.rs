@@ -43,13 +43,7 @@ impl xdevs::Atomic for SensorModel {
 }
 
 impl SensorModel {
-    pub fn new(
-        value_mean: f64,
-        value_std: f64,
-        time_mean: f64,
-        time_std: f64,
-        seed: u64,
-    ) -> Self {
+    pub fn new(value_mean: f64, value_std: f64, time_mean: f64, time_std: f64, seed: u64) -> Self {
         let value_dist = Normal::new(value_mean, value_std).unwrap();
         let time_dist = Normal::new(time_mean, time_std).unwrap();
         let rng = StdRng::seed_from_u64(seed);
@@ -126,33 +120,39 @@ impl xdevs::Atomic for ReportModel {
     fn delta_ext(state: &mut Self::State, _elapsed: f64, input: &Self::Input) {
         if let Some(&(temp, time)) = input.in_temp_rep.get_values().last() {
             let time = time * 1000_000.0;
+            println!("Temperature;{:.2};{:.0}", temp, time);
             state
                 .writer
                 .write_record(&[
-                    "Temperature",
+                    "Temperature (°C)",
                     &format!("{:.2}", temp),
-                    &format!("{:.2}", time),
+                    &format!("{:.0}", time),
                 ])
                 .unwrap();
             state.writer.flush().unwrap();
         }
         if let Some(&(hum, time)) = input.in_hum_rep.get_values().last() {
             let time = time * 1000_000.0;
+            println!("Humidity;{:.2};{:.0}", hum, time);
             state
                 .writer
-                .write_record(&["Humidity", &format!("{:.2}", hum), &format!("{:.2}", time)])
+                .write_record(&[
+                    "Humidity (%)",
+                    &format!("{:.2}", hum),
+                    &format!("{:.0}", time),
+                ])
                 .unwrap();
             state.writer.flush().unwrap();
         }
         if let Some(&(led, time)) = input.in_led_rep.get_values().last() {
             let time = time * 1000_000.0;
             let led_state = if led { "ON" } else { "OFF" };
+            println!("LED;{};{:.0}", led_state, time);
             state
                 .writer
-                .write_record(&["LED", &led_state.to_string(), &format!("{:.2}", time)])
+                .write_record(&["LED", &led_state.to_string(), &format!("{:.0}", time)])
                 .unwrap();
             state.writer.flush().unwrap();
-            println!("LED state: {}", led);
         }
         state.sigma = f64::INFINITY;
     }

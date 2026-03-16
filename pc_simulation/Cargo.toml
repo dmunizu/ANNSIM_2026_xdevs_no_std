@@ -2,11 +2,20 @@
 name = "pc_simulation"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.87"
 
 [dependencies]
-tokio = { version = "1.49.0", features = ["macros", "rt-multi-thread", "sync", "io-util", "io-std"] }
-xdevs-no-std = {git = "https://github.com/iscar-ucm/xdevs_no_std.rs.git", branch = "component2", features = ["std"] }
+tokio = { version = "1.49.0", features = [
+    "macros",
+    "rt-multi-thread",
+    "sync",
+    "io-util",
+    "io-std",
+] }
+xdevs-no-std = { git = "https://github.com/iscar-ucm/xdevs_no_std.rs.git", rev = "998f70a", features = [
+    "std",
+] }
 csv = "1.4"
-rand ="0.9.2"
+rand = "0.9.2"
 rand_distr = "0.5.1"
-common_logic = {path = "../common_logic"}
+common_logic = { path = "../common_logic" }

@@ -39,7 +39,7 @@ reader_running = True
 # ---------------------------
 with open(CSV_FILE, "w", newline='') as f:
     writer = csv.writer(f, delimiter=';')
-    writer.writerow(["Type", "Value", "Time"])  # header
+    writer.writerow(["Type", "Value", "Time (us)"])  # header
 
 
 # ---------------------------
@@ -75,7 +75,13 @@ def reader(ser):
                 except ValueError:
                     pass  # keep original value if conversion fails
 
-            writer.writerow([data_type, value, timestamp])
+            # CSV label mapping with units
+            csv_type = {
+                "Temperature": "Temperature (°C)",
+                "Humidity": "Humidity (%)",
+            }.get(data_type, data_type)
+
+            writer.writerow([csv_type, value, timestamp])
             f.flush()  # Ensure data is written immediately
             print("Logged:", parts)
 

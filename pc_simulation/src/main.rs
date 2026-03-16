@@ -12,6 +12,9 @@ use xdevs::{
 
 mod sim_models;
 
+// Simulation time
+const SIM_TIME: f64 = 600.0; // seconds
+
 // Temperature sensor constants
 const TEMP_VALUE_MEAN: f64 = 23.63;
 const TEMP_VALUE_STD: f64 = 0.07;
@@ -147,7 +150,7 @@ async fn main() {
     // Initialize CSV writer
     let file = File::create("data.csv").unwrap();
     let mut wtr = csv::WriterBuilder::new().delimiter(b';').from_writer(file);
-    wtr.write_record(&["Type", "Value", "Time"]).unwrap();
+    wtr.write_record(&["Type", "Value", "Time (us)"]).unwrap();
 
     // Initialize simulation models
     let temp_sensor = sim_models::SensorModel::new(
@@ -167,17 +170,11 @@ async fn main() {
     let led_actuator = sim_models::LedModel::new(LED_TIME_MEAN, LED_TIME_STD, LED_SEED);
     let reporter = sim_models::ReportModel::build(wtr, f64::INFINITY);
     let controller = CommonLogic::new(2.0, 1.0, false);
-    let pc_sim = PcModel::build(
-        temp_sensor,
-        hum_sensor,
-        led_actuator,
-        reporter,
-        controller,
-    );
+    let pc_sim = PcModel::build(temp_sensor, hum_sensor, led_actuator, reporter, controller);
 
     // Set up the simulator and input handler
     let mut simulator = Simulator::new(pc_sim);
-    let config = Config::new(0.0, 600.0, 1.0, None);
+    let config = Config::new(0.0, SIM_TIME, 1.0, None);
     let input_handler = PcInputHandler::new(20);
     let sender = input_handler.sender.clone();
 

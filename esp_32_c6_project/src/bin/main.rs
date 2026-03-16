@@ -27,6 +27,9 @@ use xdevs::traits::AsyncInput;
 use core::fmt::Write;
 use heapless::String;
 
+// Simulation time
+const SIM_TIME: f64 = 600.0; // seconds
+
 // FIFO read buffer size
 const READ_BUF_SIZE: usize = 20;
 // Input Channel enum and size
@@ -172,7 +175,7 @@ async fn report_task(mut tx: UartTx<'static, Async>) {
                 let mut msg: String<64> = String::new();
                 write!(
                     msg,
-                    "Temperature;{:.2};{:.2}\r\n",
+                    "Temperature;{:.2};{:.0}\r\n",
                     temp,
                     t_sim * 1_000_000.0
                 )
@@ -183,7 +186,7 @@ async fn report_task(mut tx: UartTx<'static, Async>) {
             }
             ModelOutputs::HumReport((hum, t_sim)) => {
                 let mut msg: String<64> = String::new();
-                write!(msg, "Humidity;{:.2};{:.2}\r\n", hum, t_sim * 1_000_000.0).unwrap();
+                write!(msg, "Humidity;{:.2};{:.0}\r\n", hum, t_sim * 1_000_000.0).unwrap();
                 embedded_io_async::Write::write(&mut tx, msg.as_bytes())
                     .await
                     .unwrap();
@@ -191,7 +194,7 @@ async fn report_task(mut tx: UartTx<'static, Async>) {
             ModelOutputs::LedReport((state, t_sim)) => {
                 let state_str = if state { "ON" } else { "OFF" };
                 let mut msg: String<64> = String::new();
-                write!(msg, "LED;{};{:.2}\r\n", state_str, t_sim * 1_000_000.0).unwrap();
+                write!(msg, "LED;{};{:.0}\r\n", state_str, t_sim * 1_000_000.0).unwrap();
                 embedded_io_async::Write::write(&mut tx, msg.as_bytes())
                     .await
                     .unwrap();
@@ -233,15 +236,21 @@ impl AsyncInput for Esp32InputHandler {
                 ModelInputs::Command(cmd) => input.in_command.add_value(cmd).unwrap(),
                 ModelInputs::TempReading(temp) => input.in_temp_reading.add_value(temp).unwrap(),
                 ModelInputs::HumReading(hum) => input.in_hum_reading.add_value(hum).unwrap(),
-                ModelInputs::LedConfirmation(state) => input.in_led_reading.add_value(state).unwrap(),
+                ModelInputs::LedConfirmation(state) => {
+                    input.in_led_reading.add_value(state).unwrap()
+                }
             };
             // Drain all additional inputs that arrived at the same time
             while let Ok(rcv) = IN_CHANNEL.try_receive() {
                 match rcv {
                     ModelInputs::Command(cmd) => input.in_command.add_value(cmd).unwrap(),
-                    ModelInputs::TempReading(temp) => input.in_temp_reading.add_value(temp).unwrap(),
+                    ModelInputs::TempReading(temp) => {
+                        input.in_temp_reading.add_value(temp).unwrap()
+                    }
                     ModelInputs::HumReading(hum) => input.in_hum_reading.add_value(hum).unwrap(),
-                    ModelInputs::LedConfirmation(state) => input.in_led_reading.add_value(state).unwrap(),
+                    ModelInputs::LedConfirmation(state) => {
+                        input.in_led_reading.add_value(state).unwrap()
+                    }
                 };
             }
         };
@@ -339,7 +348,7 @@ async fn main(spawner: Spawner) -> ! {
     // Prepare simulation
     let controller = common_logic::CommonLogic::new(2.0, 1.0, led.is_set_high());
     let mut simulator = xdevs::simulator::Simulator::new(controller);
-    let config = Config::new(0.0, 600.0, 1.0, None);
+    let config = Config::new(0.0, SIM_TIME, 1.0, None);
     let input_handler = Esp32InputHandler::new();
 
     // Spawn tasks
