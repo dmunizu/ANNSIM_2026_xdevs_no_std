@@ -6,6 +6,7 @@ This repository contains an example of the co-simulation flow allowed by the [xD
 
 This example has been tested in the following systems:
 - Fedora Linux 43
+- Windows 11 (needs the [CP210x driver](https://www.silabs.com/software-and-tools/usb-to-uart-bridge-vcp-drivers) for serial UART to USB communication)
   
 If you want to run the provided example, you first need to install the following dependencies:
 
@@ -79,10 +80,11 @@ If you want to use VSCode (which is the recommended way), then you will need to 
 
 - [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer): This official extension provides support for the Rust programming language.
 - [Debugger for probe-rs](https://marketplace.visualstudio.com/items?itemName=probe-rs.probe-rs-debugger): This extension provides support for `probe-rs` debugging.
+- [Serial monitor](https://marketplace.visualstudio.com/items?itemName=ms-vscode.vscode-serial-monitor) (optional): This official extension provides support for serial communication from VSCode itself, while not necessary, it simplifies the serial communication with the ESP32-C6 board through UART.
 
 ### Python 3 (optional)
 
-The computer simulation has default values mimicking those of our test system. However, if you want it to mirror you implementation, a Python script that generates configuration values for it is provided in this repository.
+The computer simulation has default values mimicking those of our test system. However, if you want it to mirror you implementation, a Python script that generates configuration values for it is provided in this repository. The `numpy` and `pyserial` packages are necessary for the script to run.
 
 ## Project structure
 
@@ -115,7 +117,7 @@ The simulation can be debugged by selecting Debug in `main.rs` within VSCode:
 
 ## Interfacing with the system
 
-The example, in both the simulation and real implementation, interacts with the user through commands that are input through the terminal (`pc_simulation`) or UART serial communication (`esp32_c6_project`). The commands are the following:
+The example, in both the simulation and real implementation, interacts with the user through commands that are input through the terminal (`pc_simulation`) or UART serial communication (`esp32_c6_project`, the UART messages must end with `\n` character). The commands are the following:
 - `TEMP ON` and `TEMP OFF`: Enable or disable the periodic acquisition of temperature (in °C) measurements each second.
 - `HUM ON` and `HUM OFF`: Enable or disable the periodic acquisition of humidity (in %) measurements each second.
 - `LED ON` and `LED OFF`: Turn the LED on or off.

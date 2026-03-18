@@ -104,7 +104,7 @@ def load_data(filename):
     numeric_data = defaultdict(lambda: {"Value": [], "Time": []})
     led_data = {"Time": []}
 
-    with open(filename, newline='', encoding='utf-8') as f:
+    with open(filename, newline='') as f:
         reader = csv.reader(f, delimiter=';')
         next(reader)  # Skip header
 
